@@ -9,8 +9,17 @@ export default function Generator() {
     const latestTargetName = useStore((state) => state.latestTargetName);
     const [loading, setLoading] = useState(false);
 
+    const [error, setError] = useState('');
+
     const handleGenerate = async () => {
+        setError('');
         if (!prompt.trim()) return;
+        
+        if (prompt.trim().length < 3) {
+            setError('Prompt must be at least 3 characters long');
+            return;
+        }
+
         setLoading(true);
         try {
             const res = await fetch('/api/generate', {
@@ -19,9 +28,16 @@ export default function Generator() {
                 body: JSON.stringify({ prompt }),
             });
             const data = await res.json();
+            
+            if (!res.ok) {
+                setError(data.error || 'Failed to generate name');
+                return;
+            }
+            
             setLatestTargetName(data.targetName);
         } catch (error) {
             console.error("Generation failed:", error);
+            setError('Something went wrong. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -43,6 +59,12 @@ export default function Generator() {
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
             />
+
+            {error && (
+                <div className="text-red-400 text-sm mb-4 bg-red-500/10 border border-red-500/20 p-3 rounded-lg">
+                    {error}
+                </div>
+            )}
 
             <button
                 className="w-full bg-gradient-to-br from-violet-500 to-pink-500 text-white font-semibold py-3 px-6 rounded-lg hover:-translate-y-0.5 hover:shadow-lg hover:shadow-violet-500/50 active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
