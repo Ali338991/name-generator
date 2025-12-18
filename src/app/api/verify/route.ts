@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+});
 
 export async function POST(request: Request) {
-    await new Promise(resolve => setTimeout(resolve, 800));
+    if (!process.env.OPENAI_API_KEY) {
+        return NextResponse.json({ error: "OpenAI API Key not configured" }, { status: 500 });
+    }
 
     const { candidate, targetName } = await request.json();
 
@@ -12,8 +19,6 @@ export async function POST(request: Request) {
         );
     }
 
-    const latestTarget = targetName;
-
     if (!candidate || typeof candidate !== 'string') {
         return NextResponse.json(
             { error: "Invalid candidate name provided." },
@@ -21,42 +26,35 @@ export async function POST(request: Request) {
         );
     }
 
-    const { score, explanation } = calculateMatch(latestTarget, candidate);
+    try {
+        const completion = await openai.chat.completions.create({
+            messages: [
+                {
+                    role: "system",
+                    content: `You are a strict judge comparing a candidate name against a target name. 
+                    Analyze the similarity. 
+                    Return a JSON object with two fields: 
+                    - 'score': a number between 0 and 1 (1.0 for perfect match, 0.0 for no similarity).
+                    - 'explanation': a short explanation of the score.`
+                },
+                {
+                    role: "user",
+                    content: `Target Name: "${targetName}"\nCandidate Name: "${candidate}"`
+                }
+            ],
+            model: "gpt-4o",
+            response_format: { type: "json_object" },
+        });
 
-    return NextResponse.json({
-        score,
-        explanation
-    });
-}
-
-function calculateMatch(target: string, candidate: string) {
-    const targetLower = target.toLowerCase();
-    const candidateLower = candidate.toLowerCase();
-
-    if (targetLower === candidateLower) {
-        return {
-            score: 1.0,
-            explanation: "Perfect match! The candidate name is identical to the target name."
-        };
+        const content = completion.choices[0].message.content;
+        const result = content ? JSON.parse(content) : {}; 
+        
+        return NextResponse.json({
+            score: result.score || 0,
+            explanation: result.explanation || "Could not verify."
+        });
+    } catch (error) {
+        console.error("OpenAI Error:", error);
+        return NextResponse.json({ error: "Failed to verify name" }, { status: 500 });
     }
-
-    if (candidateLower.length > 2) {
-        if (targetLower.includes(candidateLower)) {
-            return {
-                score: 0.5,
-                explanation: `Partial match. The candidate "${candidate}" is a substring of the target.`
-            };
-        }
-        if (candidateLower.includes(targetLower)) {
-            return {
-                score: 0.5,
-                explanation: `Partial match. The target is contained within your candidate.`
-            };
-        }
-    }
-
-    return {
-        score: 0.1,
-        explanation: `The name "${candidate}" is too different from the target.`
-    };
 }
